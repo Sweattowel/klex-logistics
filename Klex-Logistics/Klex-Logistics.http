@@ -1,0 +1,6 @@
+@Klex-Logistics_HostAddress = http://localhost:5240/swagger/index.html
+
+GET {{Klex-Logistics_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
