@@ -1,12 +1,15 @@
 'use client'
 
+import Alerts, { AlertType } from "@/app/Global/Alerts";
 import DropDown from "@/app/Global/DropDown";
 import Foot from "@/app/Global/Foot";
 import Nav from "@/app/Global/Nav";
-import { Contractor, Delivery, Product, Shipping } from "@/app/Schema/Schema"
-import { useState } from "react";
+import { Contractor, Delivery, LocationType, Product, Shipping } from "@/app/Schema/Schema"
+import { useEffect, useState } from "react";
 
 export default function Products(){
+    const [ alerts, setAlerts ] = useState<AlertType[]>([]);
+
     const [Delivery, setDelivery] = useState<Delivery>({
             DeliveryID: 0,
             DeliveryProducts: [],
@@ -32,38 +35,88 @@ export default function Products(){
             DeliveryExpectedCount: 0,
             DeliveryExpectedWeight: 0,
     });
+    const [ needShipping, setNeedShipping ] = useState<boolean>(false);
+    const [ deliveryTimeWeeks, setDeliveryTimeWeeks ] = useState<number>(0);
+    const [ productsNeedShipping, setProductsNeedShipping ] = useState<any[]>([])
+    
+    function calculateShipping(ProductOrigin: LocationType, ProductDestination: LocationType, ProductName: string){
+        const routes = Ships.filter(ship => 
+            ship.ShippingCurrRoute.RouteFrom.PortLocation.LocationCountry == ProductOrigin.LocationCountry &&
+            ship.ShippingCurrRoute.RouteTo.PortLocation.LocationCountry == ProductDestination.LocationCountry
+        );
+        
+        if (routes.length === 0) {
+            Alert(`Product ${ProductName} Cannot be shipped, Please remove`, 2);
+            return 0;
+        }
 
-    function calculateDeliveryTime(){
-        let result = 0;
-        const countryDistanceWeek = 2;
-        const stateDistanceWeek = 1;
+        const shortestRoute = routes.reduce((minShip, currentShip) => {
+            return currentShip.ShippingCurrRoute.RouteLength < minShip.ShippingCurrRoute.RouteLength ? currentShip : minShip;
+        }, routes[0]);
+        setProductsNeedShipping(prev => [...prev, 
+            {
+                ProductOrigin,
+                ProductDestination,
+                shortestRoute
+            }
+        ]);
+        console.log(productsNeedShipping)
+        setNeedShipping(true);
+
+        return shortestRoute.ShippingCurrRoute.RouteLength;
+    };
+
+    function calculateTransport(ProductOrigin: LocationType, ProductDestination: LocationType) {
+        let result = 0;    
+        if (ProductOrigin.LocationState !== ProductDestination.LocationState){ result += 1};
+
+        if (ProductOrigin.LocationCity !== ProductDestination.LocationCity){ result += 0.25};
+
+        return result
+    };
+
+    function Alert(AlertText: string, Severity: number){
+        setAlerts(alerts => [...alerts, {AlertText: AlertText, AlertSeverity: Severity}]);
+    };
+
+    useEffect(() => {
+        setAlerts([]);
+        let result: number = 0;
         const cityDistanceWeek = 0.25;
 
         const sources = Array.from(
-        new Map(
-            Delivery.DeliveryProducts
-            .flatMap(product => product.ProductSources)
-            .map(source => {
-                const key = `${source.LocationCountry}|${source.LocationState}|${source.LocationCity}|${source.LocationAddress}`;
-                return [key, source];
-            })
-        ).values()
+            new Map(
+                Delivery.DeliveryProducts.flatMap(product =>
+                    product.ProductSources.map(source => {
+                        const key = `${source.LocationCountry}|${source.LocationState}|${source.LocationCity}|${source.LocationAddress}`;
+                        return [key, { ...source, ProductName: product.ProductName }];
+                    })
+                )
+            ).values()
         );
-        const [country, state, city, address] = Object.entries(Delivery.DeliveryDestination).map(([key, value]) => value);
+
+        const { LocationCountry: country, LocationState: state, LocationCity: city } = Delivery.DeliveryDestination;
 
         sources.forEach(productSource => {
-            if (productSource.LocationCountry !== country){result += countryDistanceWeek};
-            if (productSource.LocationState !== state){result += stateDistanceWeek};
-            if (productSource.LocationCity !== city){result += cityDistanceWeek};
+            if (productSource.LocationCountry !== country){ 
+                result += calculateShipping(productSource, Delivery.DeliveryDestination, productSource.ProductName);
+            };
+            if (productSource.LocationState !== state){ 
+                result += calculateTransport(productSource, Delivery.DeliveryDestination); 
+            };
+            if (productSource.LocationCity !== city){ result += cityDistanceWeek; }
         });
 
-        return result;
-    };
+        setDeliveryTimeWeeks(result);
+
+    }, [Delivery.DeliveryProducts, Delivery.DeliveryDestination]);
+
     return (
         <main>
             <Nav />
-                <section className="flex">
-                    <div className="w-[50%] flex flex-col items-center border rounded m-5 p-5">
+            <Alerts key={alerts.length} ImportAlerts={alerts}/>
+                <section className="flex flex-col">
+                    <div className="w-[95%] flex flex-col items-center border rounded m-5 p-5">
                         <h1 className="font-bold border-b w-full text-center">
                             Select Destination
                         </h1>
@@ -83,27 +136,36 @@ export default function Products(){
                             onSelect={(option) => setDelivery(prev => ({...prev, DeliveryDestination: {...prev.DeliveryDestination, LocationCity: option}}))} 
                         />
 
-                        <input type="text" placeholder="Please Type in full address" 
-                            className="m-2 p-2 rounded border"
+                        <input type="text" placeholder="Enter address with building number" 
+                            className="m-2 p-2 rounded border w-[80%]"
                             onChange={(e) => setDelivery(prev => ({...prev, DeliveryDestination: {...prev.DeliveryDestination, LocationAddress: e.target.value}}))}
                         />
                     </div>
-                    <div className="w-[50%] flex flex-col items-center border rounded m-5 p-5">
+                    <div className="w-[95%] flex flex-col items-center border rounded m-5 p-5">
                         <h1 className="font-bold border-b w-full text-center">
                             Choose Products
                         </h1>
                         <ul 
-                            className="w-full"
+                            className="w-full flex flex-wrap justify-evenly text-center"
                         >
                             {ProductList.map((product: Product, index: number) => (
                                 <li key={index}
-                                    className="w-full rounded border p-1 m-1 bg-gradient-to-br from-green-200 hover:from-green-400 hover:cursor-pointer"
+                                    className="min-w-[30%] max-w-[95%] flex justify-evenly items-center rounded border p-1 m-1 bg-gradient-to-br from-green-200 hover:from-green-400 hover:cursor-pointer text-[0.7rem]"
                                     onClick={() => setDelivery(prev => ({
                                         ...prev,
                                         DeliveryProducts: [...prev.DeliveryProducts, product]
                                     }))}
                                 >
-                                    {product.ProductName}
+                                    {product.ProductName}<br />                                     
+                                    {product.ProductSources.map((s, i) => (
+                                    <p key={i}>
+                                        |Cntry: {s.LocationCountry
+                                        .split(" ")
+                                        .map(word => word[0])
+                                        .join("")
+                                        .toUpperCase()}|State: {s.LocationState.slice(0, 3).toUpperCase()}
+                                    </p>
+                                    ))}
                                 </li>
                             ))}
                         </ul>
@@ -156,14 +218,34 @@ export default function Products(){
                 </section>
                 <section className="w-[90%]] flex flex-col items-center border rounded m-5 p-5">
                     <h1 className="h-[10%] font-bold border-b w-full text-center">
+                        Shipping requirements
+                    </h1>
+                    <ul 
+                        className="w-full flex flex-col justify-evenly items-center"
+                    >
+                        {productsNeedShipping && productsNeedShipping.map((product: any, index: number) => {
+                            console.log(product);
+                            return (
+                                <li key={index}
+                                    className="flex justify-evenly w-[90%] p-1 m-1 rounded border bg-gradient-to-br from-green-200 hover:from-red-200 hover:cursor-pointer"
+                                > 
+                                    {product.ProductOrigin.ProductName} From {product.ProductOrigin.LocationCountry} Via {product.shortestRoute.ShipName}: {product.shortestRoute.ShippingCurrRoute.RouteLength}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </section>
+                
+                <section className="w-[90%]] flex flex-col items-center border rounded m-5 p-5">
+                    <h1 className="h-[10%] font-bold border-b w-full text-center">
                         Completed Order
                     </h1>
                     <div className="w-[95%] border m-1 p-1">
                         <p>Current Date: {Date().toString().slice(0,15)}</p>
                         <p>
-                            Expected Delivery: {
-                                new Date(new Date().setMonth(new Date().getMonth() + calculateDeliveryTime() / 4)).toDateString()
-                            }
+                        Expected Delivery: {
+                            new Date(new Date().setMonth(new Date().getMonth() + deliveryTimeWeeks / 4)).toDateString()
+                        }
                         </p>
                         <p>
                         Max Expiration: {Delivery.DeliveryProducts.length > 0
@@ -529,48 +611,152 @@ const ContractorList : Contractor[] = [
     },
 ];
 const Ships: Shipping[] = [
+    // US to Canada
     {
         ShippingID: 0,
-        ShipName: "Going Home",
+        ShipName: "Anabalastier",
         ShippingContractor: {
             ContractorID: 0,
             ContractorName: "Rickson Morters",
             ContractorRepresents: "Forsoon",
-            ContractorEmail: "Forsoon@email.com",
+            ContractorEmail: "forsoon@email.com",
             ContractorPhone: "00 000 000 000",
             ContractorMobile: "00 000 000 000",
         },
         ShippingDeliveries: [],
-        ShippingRoute: {
-            ShipCurrLocation: {
-                LocationCountry: "NULL",
-                LocationState: "NULL",
-                LocationCity: "NULL",
-                LocationAddress: "NULL",
+        ShippingCurrRoute: {
+            RouteID: 0,
+            RouteFrom: {
+                PortID: 0,
+                PortLocation: {
+                    LocationCountry: "United States",
+                    LocationState: "New York",
+                    LocationCity: "Buffalo",
+                    LocationAddress: ""
+                }
             },
-            ShipRoute: "Northwest-passage",
-            ShipNextLocation: {
-                LocationCountry: "Australia",
-                LocationState: "Queensland",
-                LocationCity: "Brisbane",
-                LocationAddress: "Port Harbour",
-            }
+            RouteTo: {
+                PortID: 1,
+                PortLocation: {
+                    LocationCountry: "Canada",
+                    LocationState: "Ontario",
+                    LocationCity: "Toronto",
+                    LocationAddress: ""
+                }
+            },
+            RouteLength: 2,
+            RouteOceans: []
         }
     },
+    // Canada to Australia
+    {
+        ShippingID: 1,
+        ShipName: "Honest Mary",
+        ShippingContractor: {
+            ContractorID: 1,
+            ContractorName: "Maple Haul",
+            ContractorRepresents: "CanTrans",
+            ContractorEmail: "cantrans@email.com",
+            ContractorPhone: "11 111 111 111",
+            ContractorMobile: "11 111 111 111",
+        },
+        ShippingDeliveries: [],
+        ShippingCurrRoute: {
+            RouteID: 1,
+            RouteFrom: {
+                PortID: 2,
+                PortLocation: {
+                    LocationCountry: "Canada",
+                    LocationState: "British Columbia",
+                    LocationCity: "Vancouver",
+                    LocationAddress: ""
+                }
+            },
+            RouteTo: {
+                PortID: 3,
+                PortLocation: {
+                    LocationCountry: "Australia",
+                    LocationState: "New South Wales",
+                    LocationCity: "Sydney",
+                    LocationAddress: ""
+                }
+            },
+            RouteLength: 5,
+            RouteOceans: []
+        }
+    },
+    // Australia to US
+    {
+        ShippingID: 2,
+        ShipName: "Fell Omen",
+        ShippingContractor: {
+            ContractorID: 2,
+            ContractorName: "Koala Shipping",
+            ContractorRepresents: "OzTrans",
+            ContractorEmail: "oztrans@email.com",
+            ContractorPhone: "22 222 222 222",
+            ContractorMobile: "22 222 222 222",
+        },
+        ShippingDeliveries: [],
+        ShippingCurrRoute: {
+            RouteID: 2,
+            RouteFrom: {
+                PortID: 4,
+                PortLocation: {
+                    LocationCountry: "Australia",
+                    LocationState: "Victoria",
+                    LocationCity: "Melbourne",
+                    LocationAddress: ""
+                }
+            },
+            RouteTo: {
+                PortID: 5,
+                PortLocation: {
+                    LocationCountry: "United States",
+                    LocationState: "California",
+                    LocationCity: "Los Angeles",
+                    LocationAddress: ""
+                }
+            },
+            RouteLength: 4,
+            RouteOceans: []
+        }
+    },
+    // Canada to US (new route)
+    {
+        ShippingID: 3,
+        ShipName: "Moose and Tractor",
+        ShippingContractor: {
+            ContractorID: 3,
+            ContractorName: "Northern Freight",
+            ContractorRepresents: "GreatLakes Express",
+            ContractorEmail: "nfreight@email.com",
+            ContractorPhone: "33 333 333 333",
+            ContractorMobile: "33 333 333 333",
+        },
+        ShippingDeliveries: [],
+        ShippingCurrRoute: {
+            RouteID: 3,
+            RouteFrom: {
+                PortID: 6,
+                PortLocation: {
+                    LocationCountry: "Canada",
+                    LocationState: "Quebec",
+                    LocationCity: "Montreal",
+                    LocationAddress: ""
+                }
+            },
+            RouteTo: {
+                PortID: 7,
+                PortLocation: {
+                    LocationCountry: "United States",
+                    LocationState: "Vermont",
+                    LocationCity: "Burlington",
+                    LocationAddress: ""
+                }
+            },
+            RouteLength: 3,
+            RouteOceans: []
+        }
+    }
 ];
-/*
-export interface Shipping 
-{
-    ShippingID: number;
-    ShipName: string;
-    ShippingContractor: Contractor;
-    ShippingDeliveries: Delivery[];
-    ShippingRoute: ShippingRoute;
-}
-export interface ShippingRoute 
-{
-    ShipCurrLocation: string;
-    ShipRoute: string;
-    ShipNextLocation: string;
-}
-*/

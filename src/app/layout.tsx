@@ -3,8 +3,8 @@ import "./globals.css";
 import { ThemeProvider } from "./Context/ThemeContext";
 
 export const metadata: Metadata = {
-  title: "Klex-Energy",
-  description: "Your Energy management platform",
+  title: "Klex-Logistics",
+  description: "Logistics and delivery platform",
 };
 
 export default function RootLayout({

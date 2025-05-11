@@ -1,4 +1,4 @@
-export interface Location 
+export interface LocationType 
 {
     LocationAddress: string;
     LocationCity: string;
@@ -22,14 +22,14 @@ export interface Product
     ProductPrice: number;
     ProductIsAvailable: boolean;
     ProductExpirationAvg: string;
-    ProductSources: Location[]
+    ProductSources: LocationType[]
 }
 export interface Delivery
 {
     DeliveryID: number;
     DeliveryProducts: Product[];
     DeliverySource: string;
-    DeliveryDestination: Location;
+    DeliveryDestination: LocationType;
     DeliveryTransportContractor: Contractor;
     DeliveryRecipient: string;
     DeliveryDateStart: string;
@@ -44,11 +44,18 @@ export interface Shipping
     ShipName: string;
     ShippingContractor: Contractor;
     ShippingDeliveries: Delivery[];
-    ShippingRoute: ShippingRoute;
+    ShippingCurrRoute: Route;
 }
-export interface ShippingRoute 
+export interface Route 
 {
-    ShipCurrLocation: Location;
-    ShipRoute: string;
-    ShipNextLocation: Location;
+    RouteID: number;
+    RouteFrom: PortDesignation;
+    RouteTo: PortDesignation;
+    RouteOceans: string[];
+    RouteLength: number;
+}
+export interface PortDesignation
+{
+    PortID: number;
+    PortLocation: LocationType;
 }

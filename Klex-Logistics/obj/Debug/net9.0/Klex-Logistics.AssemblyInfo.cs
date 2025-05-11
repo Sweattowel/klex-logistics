@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Klex-Logistics")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4e4058723edc395b42e4406e0ee453fa2f614fa2")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+aa5f0cd04edf74ef072812f5e01920779d5ede0c")]
 [assembly: System.Reflection.AssemblyProductAttribute("Klex-Logistics")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Klex-Logistics")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
