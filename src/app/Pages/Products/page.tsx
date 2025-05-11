@@ -4,7 +4,7 @@ import Alerts, { AlertType } from "@/app/Global/Alerts";
 import DropDown from "@/app/Global/DropDown";
 import Foot from "@/app/Global/Foot";
 import Nav from "@/app/Global/Nav";
-import { Contractor, Delivery, LocationType, Product, Shipping } from "@/app/Schema/Schema"
+import { Contractor, Delivery, LocationType, Product, Shipping, ShipType } from "@/app/Schema/Schema"
 import { useEffect, useState } from "react";
 
 export default function Products(){
@@ -27,6 +27,7 @@ export default function Products(){
                 ContractorPhone : "",
                 ContractorMobile : "",
                 ContractorEmail : "",
+                ContractorLocation: null
             },
             DeliveryRecipient: "",
             DeliveryDateStart: "",
@@ -37,30 +38,56 @@ export default function Products(){
     });
     const [ needShipping, setNeedShipping ] = useState<boolean>(false);
     const [ deliveryTimeWeeks, setDeliveryTimeWeeks ] = useState<number>(0);
-    const [ productsNeedShipping, setProductsNeedShipping ] = useState<any[]>([])
+    const [ productsNeedShipping, setProductsNeedShipping ] = useState<Map<string, ShipType>>(new Map())
     
-    function calculateShipping(ProductOrigin: LocationType, ProductDestination: LocationType, ProductName: string){
+    function calculateShipping(ProductOrigin: LocationType, ProductName: string){
         const routes = Ships.filter(ship => 
             ship.ShippingCurrRoute.RouteFrom.PortLocation.LocationCountry == ProductOrigin.LocationCountry &&
-            ship.ShippingCurrRoute.RouteTo.PortLocation.LocationCountry == ProductDestination.LocationCountry
+            ship.ShippingCurrRoute.RouteTo.PortLocation.LocationCountry == Delivery.DeliveryDestination.LocationCountry
         );
         
         if (routes.length === 0) {
-            Alert(`Product ${ProductName} Cannot be shipped, Please remove`, 2);
+            Alert(`Product ${ProductName} Cannot be shipped, Please remove`, 200);
             return 0;
         }
-
+        
         const shortestRoute = routes.reduce((minShip, currentShip) => {
             return currentShip.ShippingCurrRoute.RouteLength < minShip.ShippingCurrRoute.RouteLength ? currentShip : minShip;
         }, routes[0]);
-        setProductsNeedShipping(prev => [...prev, 
-            {
-                ProductOrigin,
-                ProductDestination,
-                shortestRoute
+
+  
+        
+        setProductsNeedShipping(prev => {
+            const updated = new Map(prev);
+            const existing = updated.get(shortestRoute.ShipName); 
+            if (!existing) {
+                updated.set(shortestRoute.ShipName, {
+                    ShippingID: shortestRoute.ShippingID,
+                    ShipName: shortestRoute.ShipName,
+                    ShippingContractor: shortestRoute.ShippingContractor,
+                    ShippingCurrRoute: shortestRoute.ShippingCurrRoute,
+                    ShippingProducts: shortestRoute.ShippingProducts,
+                })
+            } else {
+                updated.set(shortestRoute.ShipName, {
+                    ShippingID: existing?.ShippingID,
+                    ShipName: existing?.ShipName,
+                    ShippingContractor: existing?.ShippingContractor,
+                    ShippingCurrRoute: existing?.ShippingCurrRoute,
+                    ShippingProducts: {
+                        ...Delivery,
+                        DeliveryProducts: Delivery.DeliveryProducts.filter(product =>
+                            product.ProductSources.some(source =>
+                                source.LocationCountry === shortestRoute.ShippingCurrRoute.RouteFrom.PortLocation.LocationCountry
+                            )
+                        )
+                    }
+                });
             }
-        ]);
-        console.log(productsNeedShipping)
+
+            return updated;
+        }); 
+
         setNeedShipping(true);
 
         return shortestRoute.ShippingCurrRoute.RouteLength;
@@ -89,7 +116,7 @@ export default function Products(){
                 Delivery.DeliveryProducts.flatMap(product =>
                     product.ProductSources.map(source => {
                         const key = `${source.LocationCountry}|${source.LocationState}|${source.LocationCity}|${source.LocationAddress}`;
-                        return [key, { ...source, ProductName: product.ProductName }];
+                        return [key, { ...source, ProductName: product.ProductName, Product: product }];
                     })
                 )
             ).values()
@@ -99,7 +126,7 @@ export default function Products(){
 
         sources.forEach(productSource => {
             if (productSource.LocationCountry !== country){ 
-                result += calculateShipping(productSource, Delivery.DeliveryDestination, productSource.ProductName);
+                result += calculateShipping(productSource, productSource.ProductName);
             };
             if (productSource.LocationState !== state){ 
                 result += calculateTransport(productSource, Delivery.DeliveryDestination); 
@@ -197,9 +224,16 @@ export default function Products(){
                         <h1 className="h-[10%] font-bold border-b w-full text-center">
                             Contractor
                         </h1>
-                        <DropDown initialState={"Please select a contractor"} initialOptions={ContractorList.reduce((acc: string[], curr: Contractor) => {acc.push(curr.ContractorName); return acc}, [])} 
+                        <DropDown initialState={"Please select an available contractor"} key={Delivery.DeliveryDestination.LocationCountry}
+                            initialOptions={ContractorList.reduce((acc: string[], curr: Contractor) => {
+                                    if (curr.ContractorLocation?.LocationCountry === Delivery.DeliveryDestination.LocationCountry) {
+                                        acc.push(curr.ContractorName);
+                                    };
+                                    return acc;
+                                }, [])
+                            } 
                             onSelect={(option: string) => {
-                                const found = ContractorList.find(c => c.ContractorName === option);
+                                const found = ContractorList.find(c => c.ContractorName === option && (c.ContractorLocation?.LocationCountry === Delivery.DeliveryDestination.LocationCountry));
                                 if (found) {
                                     setDelivery(prev => ({...prev, DeliveryTransportContractor: found}));
                                 } else {
@@ -216,23 +250,40 @@ export default function Products(){
                         </div>
                     </div>
                 </section>
-                <section className="w-[90%]] flex flex-col items-center border rounded m-5 p-5">
+                <section className="w-[90%]] flex flex-col items-center border rounded m-5 p-5" key={productsNeedShipping.size + 100}>
                     <h1 className="h-[10%] font-bold border-b w-full text-center">
                         Shipping requirements
                     </h1>
                     <ul 
                         className="w-full flex flex-col justify-evenly items-center"
                     >
-                        {productsNeedShipping && productsNeedShipping.map((product: any, index: number) => {
-                            console.log(product);
-                            return (
-                                <li key={index}
-                                    className="flex justify-evenly w-[90%] p-1 m-1 rounded border bg-gradient-to-br from-green-200 hover:from-red-200 hover:cursor-pointer"
-                                > 
-                                    {product.ProductOrigin.ProductName} From {product.ProductOrigin.LocationCountry} Via {product.shortestRoute.ShipName}: {product.shortestRoute.ShippingCurrRoute.RouteLength}
-                                </li>
-                            );
-                        })}
+                        {productsNeedShipping && Array.from(productsNeedShipping.entries()).map(([shipName, ship], index) => (
+                            <li key={index}
+                                className="flex flex-col justify-evenly w-[90%] p-2 m-2 rounded border bg-gradient-to-br from-green-200 hover:from-red-200 hover:cursor-pointer"
+                            >
+                                <h3 className="font-bold">{ship.ShipName}</h3>
+                                <div>
+                                    <h4 className="underline">Contractor</h4>
+                                    {Object.entries(ship.ShippingContractor).map(([key, value], i) => (
+                                        <p key={i}>{key}: {value}</p>
+                                    ))}
+                                </div>
+                                <div>
+                                    <h4 className="underline">Route</h4>
+                                    <p>From: {ship.ShippingCurrRoute.RouteFrom.PortLocation.LocationCountry}</p>
+                                    <p>To: {ship.ShippingCurrRoute.RouteTo.PortLocation.LocationCountry}</p>
+                                    <p>Length: {ship.ShippingCurrRoute.RouteLength} WKS</p>
+                                </div>
+                                <div>
+                                    <h4 className="underline">Products</h4>
+                                    {ship.ShippingProducts?.DeliveryProducts?.map((prod: Product, j) => (
+                                        <p key={j}>
+                                            {prod.ProductName}
+                                        </p>
+                                    ))}
+                                </div>
+                            </li>
+                        ))}
                     </ul>
                 </section>
                 
@@ -592,6 +643,12 @@ const ContractorList : Contractor[] = [
         ContractorPhone: "0 000 000 000",
         ContractorMobile: "0 000 000 001",
         ContractorEmail: "Jamieson@email.com",
+        ContractorLocation: {
+            LocationCountry: "Australia",
+            LocationState : "Australian Capital Territory",
+            LocationCity: "Canberra",
+            LocationAddress: "18 street street"
+        }
     },
     {
         ContractorID: 1,
@@ -600,6 +657,12 @@ const ContractorList : Contractor[] = [
         ContractorPhone: "0 000 000 000",
         ContractorMobile: "0 000 000 001",
         ContractorEmail: "Jamieson@email.com",
+        ContractorLocation: {
+            LocationCountry: "Canada",
+            LocationState : "Alberta",
+            LocationCity:"Calgary",
+            LocationAddress: "Lucky blvd"
+        }
     },
     {
         ContractorID: 2,
@@ -608,9 +671,15 @@ const ContractorList : Contractor[] = [
         ContractorPhone: "0 000 000 000",
         ContractorMobile: "0 000 000 001",
         ContractorEmail: "Jamieson@email.com",
+        ContractorLocation: {
+            LocationCountry: "United States",
+            LocationState : "Alabama",
+            LocationCity:"Birmingham",
+            LocationAddress: "Lets Rock Lane"
+        }
     },
 ];
-const Ships: Shipping[] = [
+const Ships: ShipType[] = [
     // US to Canada
     {
         ShippingID: 0,
@@ -622,8 +691,9 @@ const Ships: Shipping[] = [
             ContractorEmail: "forsoon@email.com",
             ContractorPhone: "00 000 000 000",
             ContractorMobile: "00 000 000 000",
+            ContractorLocation: null
         },
-        ShippingDeliveries: [],
+        ShippingProducts: null,
         ShippingCurrRoute: {
             RouteID: 0,
             RouteFrom: {
@@ -659,8 +729,9 @@ const Ships: Shipping[] = [
             ContractorEmail: "cantrans@email.com",
             ContractorPhone: "11 111 111 111",
             ContractorMobile: "11 111 111 111",
+            ContractorLocation: null
         },
-        ShippingDeliveries: [],
+        ShippingProducts: null,
         ShippingCurrRoute: {
             RouteID: 1,
             RouteFrom: {
@@ -696,8 +767,9 @@ const Ships: Shipping[] = [
             ContractorEmail: "oztrans@email.com",
             ContractorPhone: "22 222 222 222",
             ContractorMobile: "22 222 222 222",
+            ContractorLocation: null
         },
-        ShippingDeliveries: [],
+        ShippingProducts: null,
         ShippingCurrRoute: {
             RouteID: 2,
             RouteFrom: {
@@ -733,8 +805,9 @@ const Ships: Shipping[] = [
             ContractorEmail: "nfreight@email.com",
             ContractorPhone: "33 333 333 333",
             ContractorMobile: "33 333 333 333",
+            ContractorLocation: null
         },
-        ShippingDeliveries: [],
+        ShippingProducts: null,
         ShippingCurrRoute: {
             RouteID: 3,
             RouteFrom: {

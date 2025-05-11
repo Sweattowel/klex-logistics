@@ -13,6 +13,7 @@ export interface Contractor
     ContractorPhone : string;
     ContractorMobile : string;
     ContractorEmail : string;
+    ContractorLocation: LocationType | null;
 }
 export interface Product
 {
@@ -38,12 +39,12 @@ export interface Delivery
     DeliveryExpectedCount: number;
     DeliveryExpectedWeight: number;
 }
-export interface Shipping 
+export interface ShipType 
 {
     ShippingID: number;
     ShipName: string;
     ShippingContractor: Contractor;
-    ShippingDeliveries: Delivery[];
+    ShippingProducts: Delivery | null;
     ShippingCurrRoute: Route;
 }
 export interface Route 
@@ -59,3 +60,10 @@ export interface PortDesignation
     PortID: number;
     PortLocation: LocationType;
 }
+export interface Shipping 
+{
+    Origin: LocationType;
+    Destination: LocationType;
+    Route: Shipping;
+    Deliveries: Delivery[];
+};
